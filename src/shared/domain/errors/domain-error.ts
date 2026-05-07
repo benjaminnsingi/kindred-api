@@ -22,7 +22,6 @@ export abstract class DomainError extends Error {
     this.code = code;
     this.timestamp = new Date();
 
-    // Restore prototype chain (TypeScript + Error inheritance issue)
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }

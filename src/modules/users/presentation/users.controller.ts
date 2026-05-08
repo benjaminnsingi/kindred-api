@@ -2,15 +2,23 @@ import {
   Body,
   ConflictException,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
+import { GetMyProfileUseCase } from '../application/use-cases/get-my-profile.use-case';
 import { LoginUserUseCase } from '../application/use-cases/login-user.use-case';
 import { RegisterUserUseCase } from '../application/use-cases/register-user.use-case';
 import { InvalidCredentialsError } from '../domain/errors/invalid-credentials.error';
 import { UserAlreadyExistsError } from '../domain/errors/user-already-exists.error';
+import {
+  AuthenticatedRequest,
+  JwtAuthGuard,
+} from '../../../shared/infrastructure/guards/jwt-auth.guard';
 import { LoginUserRequestDto } from './dtos/login-user.request.dto';
 import { LoginResponseDto } from './dtos/login.response.dto';
 import { RegisterUserRequestDto } from './dtos/register-user.request.dto';
@@ -21,6 +29,7 @@ export class UsersController {
   constructor(
     private readonly registerUser: RegisterUserUseCase,
     private readonly loginUser: LoginUserUseCase,
+    private readonly getMyProfile: GetMyProfileUseCase,
   ) {}
 
   @Post('register')
@@ -51,5 +60,12 @@ export class UsersController {
       }
       throw error;
     }
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async me(@Req() req: AuthenticatedRequest): Promise<UserResponseDto> {
+    const user = await this.getMyProfile.execute(req.user.sub);
+    return UserResponseDto.fromDomain(user);
   }
 }

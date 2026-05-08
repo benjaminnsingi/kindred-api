@@ -6,6 +6,8 @@ import { JWT_SERVICE } from '../../shared/application/ports/jwt-service';
 import { PASSWORD_HASHER } from '../../shared/application/ports/password-hasher';
 import { BcryptPasswordHasher } from '../../shared/infrastructure/adapters/bcrypt-password-hasher';
 import { NestJwtService } from '../../shared/infrastructure/adapters/nest-jwt-service';
+import { JwtAuthGuard } from '../../shared/infrastructure/guards/jwt-auth.guard';
+import { GetMyProfileUseCase } from './application/use-cases/get-my-profile.use-case';
 import { LoginUserUseCase } from './application/use-cases/login-user.use-case';
 import { RegisterUserUseCase } from './application/use-cases/register-user.use-case';
 import { USER_REPOSITORY } from './domain/user.repository';
@@ -14,38 +16,27 @@ import { TypeOrmUserRepository } from './infrastructure/typeorm-user.repository'
 import { UserOrmEntity } from './infrastructure/user.orm-entity';
 import { UsersController } from './presentation/users.controller';
 
-/**
- * Users module.
- *
- * Wires together all the components of the users feature:
- * - Domain: entities, value objects, repository interface
- * - Application: use cases
- * - Infrastructure: TypeORM repository, mapper
- * - Presentation: controller, DTOs
- *
- * Uses the Dependency Inversion Principle: the use cases depend on
- * IUserRepository (interface), and this module binds the interface
- * to its concrete implementation (TypeOrmUserRepository).
- */
 @Module({
   imports: [
     TypeOrmModule.forFeature([UserOrmEntity]),
     JwtModule.registerAsync({
-    imports: [ConfigModule],
-    useFactory: (configService: ConfigService) => ({
-      secret: configService.get<string>('JWT_SECRET'),
-      signOptions: {
-        expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d') as any,
-      },
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d') as any,
+        },
+      }),
+      inject: [ConfigService],
     }),
-  inject: [ConfigService],
-}),
   ],
   controllers: [UsersController],
   providers: [
     RegisterUserUseCase,
     LoginUserUseCase,
+    GetMyProfileUseCase,
     UserMapper,
+    JwtAuthGuard,
     {
       provide: USER_REPOSITORY,
       useClass: TypeOrmUserRepository,

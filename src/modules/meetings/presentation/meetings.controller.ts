@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -20,21 +21,20 @@ import {
 import { CancelMeetingUseCase } from '../application/use-cases/cancel-meeting.use-case';
 import { CreateMeetingUseCase } from '../application/use-cases/create-meeting.use-case';
 import { GetMeetingUseCase } from '../application/use-cases/get-meeting.use-case';
+import { JoinMeetingUseCase } from '../application/use-cases/join-meeting.use-case';
+import { LeaveMeetingUseCase } from '../application/use-cases/leave-meeting.use-case';
 import { ListMyMeetingsUseCase } from '../application/use-cases/list-my-meetings.use-case';
+import { ListParticipantsUseCase } from '../application/use-cases/list-participants.use-case';
+import { AlreadyParticipantError } from '../domain/errors/already-participant.error';
 import { MeetingNotFoundError } from '../domain/errors/meeting-not-found.error';
+import { MeetingNotJoinableError } from '../domain/errors/meeting-not-joinable.error';
 import { UnauthorizedMeetingActionError } from '../domain/errors/unauthorized-meeting-action.error';
 import { CreateMeetingRequestDto } from './dtos/create-meeting.request.dto';
+import { JoinMeetingRequestDto } from './dtos/join-meeting.request.dto';
 import { ListMeetingsResponseDto } from './dtos/list-meetings.response.dto';
 import { MeetingResponseDto } from './dtos/meeting.response.dto';
+import { ParticipantResponseDto } from './dtos/participant.response.dto';
 
-/**
- * HTTP entry point for the Meetings module.
- *
- * All routes require JWT authentication (via JwtAuthGuard at the class level).
- * Translates domain errors to HTTP exceptions:
- * - MeetingNotFoundError -> 404 Not Found
- * - UnauthorizedMeetingActionError -> 403 Forbidden
- */
 @Controller('meetings')
 @UseGuards(JwtAuthGuard)
 export class MeetingsController {
@@ -43,6 +43,9 @@ export class MeetingsController {
     private readonly getMeeting: GetMeetingUseCase,
     private readonly listMyMeetings: ListMyMeetingsUseCase,
     private readonly cancelMeeting: CancelMeetingUseCase,
+    private readonly joinMeeting: JoinMeetingUseCase,
+    private readonly leaveMeeting: LeaveMeetingUseCase,
+    private readonly listParticipants: ListParticipantsUseCase,
   ) {}
 
   @Post()
@@ -68,6 +71,32 @@ export class MeetingsController {
     return ListMeetingsResponseDto.fromDomain(meetings);
   }
 
+  @Post('join')
+  @HttpCode(HttpStatus.OK)
+  async join(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: JoinMeetingRequestDto,
+  ): Promise<{ meeting: MeetingResponseDto; participant: ParticipantResponseDto }> {
+    try {
+      const { meeting, participant } = await this.joinMeeting.execute({
+        meetingCode: body.meetingCode,
+        userId: req.user.sub,
+      });
+      return {
+        meeting: MeetingResponseDto.fromDomain(meeting),
+        participant: ParticipantResponseDto.fromDomain(participant),
+      };
+    } catch (error) {
+      if (error instanceof MeetingNotJoinableError) {
+        throw new ForbiddenException(error.message);
+      }
+      if (error instanceof AlreadyParticipantError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
   @Get(':id')
   async findOne(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -75,6 +104,21 @@ export class MeetingsController {
     try {
       const meeting = await this.getMeeting.execute(id);
       return MeetingResponseDto.fromDomain(meeting);
+    } catch (error) {
+      if (error instanceof MeetingNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Get(':id/participants')
+  async getParticipants(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<ParticipantResponseDto[]> {
+    try {
+      const participants = await this.listParticipants.execute(id);
+      return participants.map((p) => ParticipantResponseDto.fromDomain(p));
     } catch (error) {
       if (error instanceof MeetingNotFoundError) {
         throw new NotFoundException(error.message);
@@ -103,5 +147,17 @@ export class MeetingsController {
       }
       throw error;
     }
+  }
+
+  @Delete(':id/participants/me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async leave(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.leaveMeeting.execute({
+      meetingId: id,
+      userId: req.user.sub,
+    });
   }
 }

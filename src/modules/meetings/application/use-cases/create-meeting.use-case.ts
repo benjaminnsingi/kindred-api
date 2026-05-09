@@ -5,6 +5,11 @@ import {
   IMeetingRepository,
   MEETING_REPOSITORY,
 } from '../../domain/meeting.repository';
+import { Participant } from '../../domain/participant.entity';
+import {
+  IParticipantRepository,
+  PARTICIPANT_REPOSITORY,
+} from '../../domain/participant.repository';
 
 /**
  * Input data for creating a new meeting.
@@ -19,14 +24,17 @@ export interface CreateMeetingInput {
 /**
  * Use case for creating a new meeting.
  *
- * The hostId is provided by the caller (typically from JWT payload).
- * The use case generates the meeting code and sets initial status.
+ * Creates the meeting AND automatically registers the host as a participant
+ * with role 'host'. This ensures consistency: the host is always the first
+ * participant of their meeting.
  */
 @Injectable()
 export class CreateMeetingUseCase {
   constructor(
     @Inject(MEETING_REPOSITORY)
     private readonly meetingRepo: IMeetingRepository,
+    @Inject(PARTICIPANT_REPOSITORY)
+    private readonly participantRepo: IParticipantRepository,
   ) {}
 
   async execute(input: CreateMeetingInput): Promise<IMeeting> {
@@ -38,6 +46,15 @@ export class CreateMeetingUseCase {
     });
 
     await this.meetingRepo.save(meeting);
+
+    const hostParticipant = Participant.create({
+      meetingId: meeting.id,
+      userId: input.hostId,
+      role: 'host',
+    });
+
+    await this.participantRepo.save(hostParticipant);
+
     return meeting;
   }
 }

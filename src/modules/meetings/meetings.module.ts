@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EVENT_EMITTER } from '../../shared/application/ports/event-emitter';
 import { JWT_SERVICE } from '../../shared/application/ports/jwt-service';
 import { NestJwtService } from '../../shared/infrastructure/adapters/nest-jwt-service';
 import { JwtAuthGuard } from '../../shared/infrastructure/guards/jwt-auth.guard';
+import { WsJwtAuthGuard } from '../../shared/infrastructure/guards/ws-jwt-auth.guard';
 import { CancelMeetingUseCase } from './application/use-cases/cancel-meeting.use-case';
 import { CreateMeetingUseCase } from './application/use-cases/create-meeting.use-case';
 import { GetMeetingUseCase } from './application/use-cases/get-meeting.use-case';
@@ -20,6 +22,7 @@ import { MeetingOrmEntity } from './infrastructure/meeting.orm-entity';
 import { ParticipantOrmEntity } from './infrastructure/participant.orm-entity';
 import { TypeOrmMeetingRepository } from './infrastructure/typeorm-meeting.repository';
 import { TypeOrmParticipantRepository } from './infrastructure/typeorm-participant.repository';
+import { MeetingsGateway } from './presentation/gateways/meetings.gateway';
 import { MeetingsController } from './presentation/meetings.controller';
 
 @Module({
@@ -50,7 +53,13 @@ import { MeetingsController } from './presentation/meetings.controller';
     // Infrastructure - mappers
     MeetingMapper,
     ParticipantMapper,
+
+    // Infrastructure - guards
     JwtAuthGuard,
+    WsJwtAuthGuard,
+
+    // Presentation - gateway WebSocket
+    MeetingsGateway,
 
     // Bindings
     {
@@ -64,6 +73,10 @@ import { MeetingsController } from './presentation/meetings.controller';
     {
       provide: JWT_SERVICE,
       useClass: NestJwtService,
+    },
+    {
+      provide: EVENT_EMITTER,
+      useExisting: MeetingsGateway,
     },
   ],
 })

@@ -44,3 +44,4 @@ volumes:
 networks:
   kindred:
     driver: bridge
+    

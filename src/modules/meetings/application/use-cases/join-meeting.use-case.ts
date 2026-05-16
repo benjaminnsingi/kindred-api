@@ -1,4 +1,8 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  EVENT_EMITTER,
+  IEventEmitter,
+} from '../../../../shared/application/ports/event-emitter';
 import { AlreadyParticipantError } from '../../domain/errors/already-participant.error';
 import { MeetingNotJoinableError } from '../../domain/errors/meeting-not-joinable.error';
 import { IMeeting } from '../../domain/meeting';
@@ -13,17 +17,11 @@ import {
   PARTICIPANT_REPOSITORY,
 } from '../../domain/participant.repository';
 
-/**
- * Input data for joining a meeting.
- */
 export interface JoinMeetingInput {
   meetingCode: string;
   userId: string;
 }
 
-/**
- * Output data after a successful join.
- */
 export interface JoinMeetingOutput {
   meeting: IMeeting;
   participant: IParticipant;
@@ -32,13 +30,8 @@ export interface JoinMeetingOutput {
 /**
  * Use case for joining a meeting via its meetingCode.
  *
- * Business rules:
- * - The meeting must exist (NotFoundException otherwise)
- * - The meeting must be joinable (status: scheduled or in_progress)
- * - The user must not already be an active participant
- *
- * Re-joining: if the user has previously left the meeting (leftAt is not null),
- * they can join again - we create a new Participant record (kept for history).
+ * After a successful join, broadcasts a 'participant:joined' event
+ * to all clients subscribed to this meeting via WebSocket.
  */
 @Injectable()
 export class JoinMeetingUseCase {
@@ -47,6 +40,8 @@ export class JoinMeetingUseCase {
     private readonly meetingRepo: IMeetingRepository,
     @Inject(PARTICIPANT_REPOSITORY)
     private readonly participantRepo: IParticipantRepository,
+    @Inject(EVENT_EMITTER)
+    private readonly events: IEventEmitter,
   ) {}
 
   async execute(input: JoinMeetingInput): Promise<JoinMeetingOutput> {
@@ -76,6 +71,14 @@ export class JoinMeetingUseCase {
     });
 
     await this.participantRepo.save(participant);
+
+    this.events.emitToMeeting(meeting.id, 'participant:joined', {
+      id: participant.id,
+      meetingId: participant.meetingId,
+      userId: participant.userId,
+      role: participant.role,
+      joinedAt: participant.joinedAt,
+    });
 
     return { meeting, participant };
   }

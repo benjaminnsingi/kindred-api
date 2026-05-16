@@ -1,12 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  EVENT_EMITTER,
+  IEventEmitter,
+} from '../../../../shared/application/ports/event-emitter';
+import {
   IParticipantRepository,
   PARTICIPANT_REPOSITORY,
 } from '../../domain/participant.repository';
 
-/**
- * Input data for leaving a meeting.
- */
 export interface LeaveMeetingInput {
   meetingId: string;
   userId: string;
@@ -15,18 +16,16 @@ export interface LeaveMeetingInput {
 /**
  * Use case for leaving a meeting.
  *
- * Marks the user's active Participant record as left (sets leftAt = now).
- *
- * Notes:
- * - The host CAN leave (the meeting continues without them).
- *   To "end" a meeting, use cancel-meeting instead.
- * - If the user is not currently an active participant, throws NotFoundException.
+ * After a successful leave, broadcasts a 'participant:left' event
+ * to all clients subscribed to this meeting via WebSocket.
  */
 @Injectable()
 export class LeaveMeetingUseCase {
   constructor(
     @Inject(PARTICIPANT_REPOSITORY)
     private readonly participantRepo: IParticipantRepository,
+    @Inject(EVENT_EMITTER)
+    private readonly events: IEventEmitter,
   ) {}
 
   async execute(input: LeaveMeetingInput): Promise<void> {
@@ -43,5 +42,10 @@ export class LeaveMeetingUseCase {
 
     participant.leave();
     await this.participantRepo.save(participant);
+
+    this.events.emitToMeeting(input.meetingId, 'participant:left', {
+      id: participant.id,
+      userId: participant.userId,
+    });
   }
 }
